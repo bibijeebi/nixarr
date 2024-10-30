@@ -111,69 +111,49 @@ in {
       dataDir = cfg.stateDir;
     };
 
-    systemd.services.radarr = {
-      description = "Radarr";
-      after = [ "network.target" ];
-      wantedBy = [ "multi-user.target" ];
+    # systemd.services.radarr = {
+    #   preStart = ''
+    #     # Ensure state directory exists with correct permissions
+    #     mkdir -p ${cfg.stateDir}
+    #     chown radarr:media ${cfg.stateDir}
+    #     chmod 750 ${cfg.stateDir}
 
-      serviceConfig = {
-        Type = "simple";
-        User = "radarr";
-        Group = "media";
-        ExecStart =
-          "${cfg.package}/bin/Radarr -nobrowser -data='${cfg.stateDir}'";
-        Restart = "on-failure";
+    #     # Generate secure random values
+    #     API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
 
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
-        ReadWritePaths = [ cfg.stateDir ];
-        RestrictSUIDSGID = true;
-      };
+    #     # Write config file
+    #     cat > ${cfg.stateDir}/config.xml <<EOF
+    #     <Config>
+    #       <BindAddress>*</BindAddress>
+    #       <Port>${toString cfg.port}</Port>
+    #       <SslPort>9898</SslPort>
+    #       <EnableSsl>False</EnableSsl>
+    #       <LaunchBrowser>True</LaunchBrowser>
+    #       <ApiKey>$API_KEY</ApiKey>
+    #       <AuthenticationMethod>None</AuthenticationMethod>
+    #       <AuthenticationRequired>${
+    #         if cfg.authentication.disabledForLocalAddresses then
+    #           "DisabledForLocalAddresses"
+    #         else
+    #           "Enabled"
+    #       }</AuthenticationRequired>
+    #       <Branch>master</Branch>
+    #       <LogLevel>${cfg.logLevel}</LogLevel>
+    #       <UrlBase>${cfg.urlBase}</UrlBase>
+    #       <InstanceName>Radarr</InstanceName>
+    #     </Config>
+    #     EOF
 
-      preStart = ''
-        # Ensure state directory exists with correct permissions
-        mkdir -p ${cfg.stateDir}
-        chown radarr:media ${cfg.stateDir}
-        chmod 750 ${cfg.stateDir}
+    #     # Set correct permissions
+    #     chown radarr:media ${cfg.stateDir}/config.xml
+    #     chmod 600 ${cfg.stateDir}/config.xml
+    #   '';
+    # };
 
-        # Generate secure random values
-        API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
-
-        # Write config file
-        cat > ${cfg.stateDir}/config.xml <<EOF
-        <Config>
-          <BindAddress>*</BindAddress>
-          <Port>${toString cfg.port}</Port>
-          <SslPort>9898</SslPort>
-          <EnableSsl>False</EnableSsl>
-          <LaunchBrowser>True</LaunchBrowser>
-          <ApiKey>$API_KEY</ApiKey>
-          <AuthenticationMethod>None</AuthenticationMethod>
-          <AuthenticationRequired>${
-            if cfg.authentication.disabledForLocalAddresses then
-              "DisabledForLocalAddresses"
-            else
-              "Enabled"
-          }</AuthenticationRequired>
-          <Branch>master</Branch>
-          <LogLevel>${cfg.logLevel}</LogLevel>
-          <UrlBase>${cfg.urlBase}</UrlBase>
-          <InstanceName>Radarr</InstanceName>
-        </Config>
-        EOF
-
-        # Set correct permissions
-        chown radarr:media ${cfg.stateDir}/config.xml
-        chmod 600 ${cfg.stateDir}/config.xml
-      '';
-
-      # Your existing VPN confinement configuration
-      vpnConfinement = mkIf cfg.vpn.enable {
-        enable = true;
-        vpnNamespace = "wg";
-      };
+    # Your existing VPN confinement configuration
+    vpnConfinement = mkIf cfg.vpn.enable {
+      enable = true;
+      vpnNamespace = "wg";
     };
 
     # Keep your existing VPN namespace configuration
