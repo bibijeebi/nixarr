@@ -9,13 +9,13 @@ let
     <?xml version="1.0" encoding="utf-8"?>
     <Config>
       <BindAddress>*</BindAddress>
-      <Port>${toString cfg.port}</Port>
+      <Port>${builtins.toString cfg.port}</Port>
       <SslPort>9898</SslPort>
       <EnableSsl>false</EnableSsl>
       <LaunchBrowser>true</LaunchBrowser>
       <ApiKey>${
         builtins.substring 0 32
-        (builtins.hashString "sha256" (toString builtins.currentTime))
+        (builtins.hashString "sha256" (builtins.toString builtins.currentTime))
       }</ApiKey>
       <AuthenticationMethod>${
         if cfg.authentication.useFormLogin then "Forms" else "Basic"
