@@ -96,6 +96,10 @@ in {
         message =
           "nixarr.radarr.vpn.enable requires nixarr.vpn.enable to be true";
       }
+      {
+        assertion = cfg.authentication.password != "";
+        message = "Password must not be empty for Radarr authentication";
+      }
     ];
 
     services.radarr = {
@@ -108,22 +112,44 @@ in {
     };
 
     systemd.services.radarr = {
+      path = with pkgs; [
+        coreutils
+        util-linux
+        sqlite
+        nodePackages.pbkdf2-sha256
+      ];
+
       preStart = let
         configFile = "${cfg.stateDir}/config.xml";
       in ''
-        if [ -f ${configFile} ]; then
-          echo "Config file already exists, skipping initialization"
-          return
-        fi
+        # Ensure state directory exists with correct permissions
+        mkdir -p ${cfg.stateDir}
+        chown radarr:media ${cfg.stateDir}
+        chmod 750 ${cfg.stateDir}
 
-        cat << EOF > ${configFile}
+        # Generate secure random values
+        API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
+        SALT=$(head -c 16 /dev/urandom | base64)
+        UUID=$(uuidgen)
+
+        # Hash password using PBKDF2
+        HASHED_PASSWORD=$(pbkdf2-sha256 \
+          --iterations 10000 \
+          --salt "$SALT" \
+          --password "${cfg.authentication.password}" \
+          --digest-size 32 \
+          --encoding base64
+        )
+
+        # Write config file
+        cat > ${configFile} << 'EOF'
         <Config>
           <BindAddress>*</BindAddress>
           <Port>${toString cfg.port}</Port>
           <SslPort>9898</SslPort>
           <EnableSsl>False</EnableSsl>
           <LaunchBrowser>True</LaunchBrowser>
-          <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+          <ApiKey>''${API_KEY}</ApiKey>
           <AuthenticationMethod>${
             if cfg.authentication.useFormLogin then "Forms" else "Basic"
           }</AuthenticationMethod>
@@ -132,7 +158,7 @@ in {
               "DisabledForLocalAddresses"
             else
               "Enabled"
-            }</AuthenticationRequired>
+          }</AuthenticationRequired>
           <Branch>master</Branch>
           <LogLevel>${cfg.logLevel}</LogLevel>
           <UrlBase>${cfg.urlBase}</UrlBase>
@@ -140,30 +166,59 @@ in {
         </Config>
         EOF
 
+        # Set correct permissions
         chown radarr:media ${configFile}
         chmod 600 ${configFile}
 
-        ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
+        # Ensure database directory exists
+        mkdir -p $(dirname ${cfg.stateDir}/radarr.db)
+
+        # Update database with hashed credentials
+        ${sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
+          CREATE TABLE IF NOT EXISTS Users (
+            Id INTEGER PRIMARY KEY,
+            Identifier TEXT NOT NULL,
+            Username TEXT NOT NULL,
+            Password TEXT NOT NULL,
+            Salt TEXT NOT NULL
+          );
+          
           INSERT OR REPLACE INTO Users (
             Id, Identifier, Username, Password, Salt
           ) VALUES (
             1,
-            '$(uuidgen)',
+            '$UUID',
             '${cfg.authentication.username}',
-            '${cfg.authentication.password}',
-            '$(head -c 16 /dev/urandom | base64)'
+            '$HASHED_PASSWORD',
+            '$SALT'
           );
         EOF
+
+        # Verify database was written correctly
+        if ! sqlite3 ${cfg.stateDir}/radarr.db "SELECT Id FROM Users WHERE Id = 1;" > /dev/null; then
+          echo "Failed to write user credentials to database"
+          exit 1
+        fi
       '';
 
-      # VPN confinement configuration
+      serviceConfig = {
+        # Add security hardening to existing service
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [ cfg.stateDir ];
+        RestrictSUIDSGID = true;
+      };
+
+      # Your existing VPN confinement configuration
       vpnConfinement = mkIf cfg.vpn.enable {
         enable = true;
         vpnNamespace = "wg";
       };
     };
 
-    # VPN namespace configuration
+    # Keep your existing VPN namespace configuration
     vpnNamespaces.wg = mkIf cfg.vpn.enable {
       portMappings = [{
         from = cfg.port;
@@ -171,7 +226,7 @@ in {
       }];
     };
 
-    # Nginx reverse proxy for VPN setup
+    # Keep your existing Nginx configuration
     services.nginx = mkIf cfg.vpn.enable {
       enable = true;
       recommendedTlsSettings = true;
