@@ -119,9 +119,7 @@ in {
         nodePackages.pbkdf2-sha256
       ];
 
-      preStart = let
-        configFile = "${cfg.stateDir}/config.xml";
-      in ''
+      preStart = ''
         # Ensure state directory exists with correct permissions
         mkdir -p ${cfg.stateDir}
         chown radarr:media ${cfg.stateDir}
@@ -142,7 +140,7 @@ in {
         )
 
         # Write config file
-        cat > ${configFile} << 'EOF'
+        cat > ${cfg.stateDir}/config.xml << 'EOF'
         <Config>
           <BindAddress>*</BindAddress>
           <Port>${toString cfg.port}</Port>
@@ -167,14 +165,14 @@ in {
         EOF
 
         # Set correct permissions
-        chown radarr:media ${configFile}
-        chmod 600 ${configFile}
+        chown radarr:media ${cfg.stateDir}/config.xml
+        chmod 600 ${cfg.stateDir}/config.xml
 
         # Ensure database directory exists
         mkdir -p $(dirname ${cfg.stateDir}/radarr.db)
 
         # Update database with hashed credentials
-        ${sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
+        sqlite3 ${cfg.stateDir}/radarr.db << EOF
           CREATE TABLE IF NOT EXISTS Users (
             Id INTEGER PRIMARY KEY,
             Identifier TEXT NOT NULL,
