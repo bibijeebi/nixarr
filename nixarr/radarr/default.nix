@@ -3,6 +3,36 @@ with lib;
 let
   cfg = config.nixarr.radarr;
   nixarr = config.nixarr;
+
+  configXmlPath = "${cfg.stateDir}/config.xml";
+  configXmlText = ''
+    <?xml version="1.0" encoding="utf-8"?>
+    <Config>
+      <BindAddress>*</BindAddress>
+      <Port>${toString cfg.port}</Port>
+      <SslPort>9898</SslPort>
+      <EnableSsl>false</EnableSsl>
+      <LaunchBrowser>true</LaunchBrowser>
+      <ApiKey>${
+        builtins.substring 0 32
+        (builtins.hashString "sha256" (toString builtins.currentTime))
+      }</ApiKey>
+      <AuthenticationMethod>${
+        if cfg.authentication.useFormLogin then "Forms" else "Basic"
+      }</AuthenticationMethod>
+      <AuthenticationRequired>${
+        if cfg.authentication.disabledForLocalAddresses then
+          "DisabledForLocalAddresses"
+        else
+          "Enabled"
+      }</AuthenticationRequired>
+      <Branch>master</Branch>
+      <LogLevel>${cfg.logLevel}</LogLevel>
+      <UrlBase>${cfg.urlBase}</UrlBase>
+      <InstanceName>Radarr</InstanceName>
+    </Config>
+  '';
+
 in {
 
   imports = [ ./options.nix ];
@@ -33,44 +63,21 @@ in {
       dataDir = cfg.stateDir;
     };
 
-    # systemd.services.radarr = {
-    #   preStart = ''
-    #     # Ensure state directory exists with correct permissions
-    #     mkdir -p ${cfg.stateDir}
-    #     chown radarr:media ${cfg.stateDir}
-    #     chmod 750 ${cfg.stateDir}
-
-    #     # Generate secure random values
-    #     API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
-
-    #     # Write config file
-    #     cat > ${cfg.stateDir}/config.xml <<EOF
-    #     <Config>
-    #       <BindAddress>*</BindAddress>
-    #       <Port>${toString cfg.port}</Port>
-    #       <SslPort>9898</SslPort>
-    #       <EnableSsl>False</EnableSsl>
-    #       <LaunchBrowser>True</LaunchBrowser>
-    #       <ApiKey>$API_KEY</ApiKey>
-    #       <AuthenticationMethod>None</AuthenticationMethod>
-    #       <AuthenticationRequired>${
-    #         if cfg.authentication.disabledForLocalAddresses then
-    #           "DisabledForLocalAddresses"
-    #         else
-    #           "Enabled"
-    #       }</AuthenticationRequired>
-    #       <Branch>master</Branch>
-    #       <LogLevel>${cfg.logLevel}</LogLevel>
-    #       <UrlBase>${cfg.urlBase}</UrlBase>
-    #       <InstanceName>Radarr</InstanceName>
-    #     </Config>
-    #     EOF
-
-    #     # Set correct permissions
-    #     chown radarr:media ${cfg.stateDir}/config.xml
-    #     chmod 600 ${cfg.stateDir}/config.xml
-    #   '';
-    # };
+    # Write the config.xml file
+    system.activationScripts.radarr-config = {
+      text = ''
+        # Ensure the state directory exists
+        mkdir -p "${cfg.stateDir}"
+        
+        # Write the config file if it doesn't exist or if we're forcing an update
+        if [ ! -f "${configXmlPath}" ] || [ "$1" = "force" ]; then
+          echo "${configXmlText}" > "${configXmlPath}"
+          chown radarr:media "${configXmlPath}"
+          chmod 600 "${configXmlPath}"
+        fi
+      '';
+      deps = [];
+    };
 
     # Enable and specify VPN namespace to confine service in.
     systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
