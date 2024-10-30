@@ -108,44 +108,34 @@ in {
     };
 
     systemd.services.radarr = {
-      preStart = let
-        configTemplate = let
-          port = toString cfg.port;
-          authenticationMethod =
-            if cfg.authentication.useFormLogin then "Forms" else "Basic";
-          authenticationRequired =
-            if cfg.authentication.disabledForLocalAddresses then
-              "DisabledForLocalAddresses"
-            else
-              "Enabled";
-        in ''
-          <?xml version="1.0"?>
+      preStart = ''
+        configFile=${cfg.stateDir}/config.xml
+
+        if [ ! -f $configFile ]; then
+          cat << 'EOL' > $configFile
           <Config>
             <BindAddress>*</BindAddress>
-            <Port>${port}</Port>
+            <Port>${toString cfg.port}</Port>
             <SslPort>9898</SslPort>
             <EnableSsl>False</EnableSsl>
             <LaunchBrowser>True</LaunchBrowser>
-            <ApiKey>''${API_KEY}</ApiKey>
-            <AuthenticationMethod>${authenticationMethod}</AuthenticationMethod>
-            <AuthenticationRequired>${authenticationRequired}</AuthenticationRequired>
+            <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+            <AuthenticationMethod>${
+              if cfg.authentication.useFormLogin then "Forms" else "Basic"
+            }</AuthenticationMethod>
+            <AuthenticationRequired>${
+              if cfg.authentication.disabledForLocalAddresses then
+                "DisabledForLocalAddresses"
+              else
+                "Enabled"
+            }</AuthenticationRequired>
             <Branch>master</Branch>
             <LogLevel>${cfg.logLevel}</LogLevel>
             <UrlBase>${cfg.urlBase}</UrlBase>
             <InstanceName>Radarr</InstanceName>
           </Config>
-        '';
-      in ''
-        # Generate API key
-        API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
+          EOL
 
-        configFile=${cfg.stateDir}/config.xml
-        expectedConfig=$(cat << 'EOL'
-        ${configTemplate}
-        EOL
-        )
-        if [ ! -f $configFile ] || [ "$(cat $configFile)" != "$expectedConfig" ]; then
-          echo "$expectedConfig" > $configFile
           chown radarr:media $configFile
           chmod 600 $configFile
         fi
