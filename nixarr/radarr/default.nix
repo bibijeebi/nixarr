@@ -111,8 +111,6 @@ in {
       preStart = let
         configTemplate = let
           port = toString cfg.port;
-          apiKey =
-            "$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)";
           authenticationMethod =
             if cfg.authentication.useFormLogin then "Forms" else "Basic";
           authenticationRequired =
@@ -128,7 +126,7 @@ in {
             <SslPort>9898</SslPort>
             <EnableSsl>False</EnableSsl>
             <LaunchBrowser>True</LaunchBrowser>
-            <ApiKey>${apiKey}</ApiKey>
+            <ApiKey>''${API_KEY}</ApiKey>
             <AuthenticationMethod>${authenticationMethod}</AuthenticationMethod>
             <AuthenticationRequired>${authenticationRequired}</AuthenticationRequired>
             <Branch>master</Branch>
@@ -138,6 +136,9 @@ in {
           </Config>
         '';
       in ''
+        # Generate API key
+        API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
+
         configFile=${cfg.stateDir}/config.xml
         expectedConfig=$(cat << 'EOL'
         ${configTemplate}
