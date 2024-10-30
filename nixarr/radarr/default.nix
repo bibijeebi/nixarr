@@ -108,39 +108,41 @@ in {
     };
 
     systemd.services.radarr = {
-      preStart = ''
-        configFile=${cfg.stateDir}/config.xml
-
-        if [ ! -f $configFile ]; then
-          cat << 'EOL' > $configFile
-          <Config>
-            <BindAddress>*</BindAddress>
-            <Port>${toString cfg.port}</Port>
-            <SslPort>9898</SslPort>
-            <EnableSsl>False</EnableSsl>
-            <LaunchBrowser>True</LaunchBrowser>
-            <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
-            <AuthenticationMethod>${
-              if cfg.authentication.useFormLogin then "Forms" else "Basic"
-            }</AuthenticationMethod>
-            <AuthenticationRequired>${
-              if cfg.authentication.disabledForLocalAddresses then
-                "DisabledForLocalAddresses"
-              else
-                "Enabled"
-            }</AuthenticationRequired>
-            <Branch>master</Branch>
-            <LogLevel>${cfg.logLevel}</LogLevel>
-            <UrlBase>${cfg.urlBase}</UrlBase>
-            <InstanceName>Radarr</InstanceName>
-          </Config>
-          EOL
-
-          chown radarr:media $configFile
-          chmod 600 $configFile
+      preStart = let
+        configFile = "${cfg.stateDir}/config.xml";
+      in ''
+        if [ -f ${configFile} ]; then
+          echo "Config file already exists, skipping initialization"
+          return
         fi
 
-        # Set up default user in SQLite database
+        cat << EOF > ${configFile}
+        <Config>
+          <BindAddress>*</BindAddress>
+          <Port>${toString cfg.port}</Port>
+          <SslPort>9898</SslPort>
+          <EnableSsl>False</EnableSsl>
+          <LaunchBrowser>True</LaunchBrowser>
+          <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+          <AuthenticationMethod>${
+            if cfg.authentication.useFormLogin then "Forms" else "Basic"
+          }</AuthenticationMethod>
+          <AuthenticationRequired>${
+            if cfg.authentication.disabledForLocalAddresses then
+              "DisabledForLocalAddresses"
+            else
+              "Enabled"
+            }</AuthenticationRequired>
+          <Branch>master</Branch>
+          <LogLevel>${cfg.logLevel}</LogLevel>
+          <UrlBase>${cfg.urlBase}</UrlBase>
+          <InstanceName>Radarr</InstanceName>
+        </Config>
+        EOF
+
+        chown radarr:media ${configFile}
+        chmod 600 ${configFile}
+
         ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
           INSERT OR REPLACE INTO Users (
             Id, Identifier, Username, Password, Salt
