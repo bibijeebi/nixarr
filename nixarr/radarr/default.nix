@@ -18,7 +18,7 @@ with lib; let
       <LaunchBrowser>True</LaunchBrowser>
       <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
       <AuthenticationMethod>None</AuthenticationMethod>
-      <AuthenticationRequired>Disabled</AuthenticationRequired>
+      <AuthenticationRequired>Disabled for Local Addresses</AuthenticationRequired>
       <Branch>master</Branch>
       <LogLevel>debug</LogLevel>
       <UrlBase></UrlBase>
