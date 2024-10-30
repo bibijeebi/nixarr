@@ -143,7 +143,7 @@ in {
         done
 
         # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${pkgs.python3}/bin/python3 ${pkgs.writeText "hash-password.py" ''
+        HASH_RESULT=$(${pkgs.python3.withPackages (ps: [ ps.cryptography ])}/bin/python3 ${pkgs.writeText "hash-password.py" ''
           import base64
           import os
           import sys
