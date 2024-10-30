@@ -33,6 +33,113 @@ let
     </Config>
   '';
 
+
+  # Function to generate SQL for user setup
+  # We're using the exact format from Radarr's database
+  generateUserSetupSQL = { password, salt, identifier }: ''
+    BEGIN TRANSACTION;
+    -- Delete existing users first to ensure clean state
+    DELETE FROM Users;
+    
+    -- Insert the main admin user
+    INSERT INTO Users (
+      Identifier,
+      Username,
+      Password,
+      Salt,
+      Iterations
+    ) VALUES (
+      '${identifier}',
+      '${cfg.authentication.username}',
+      '${password}',
+      '${salt}',
+      10000
+    );
+    COMMIT;
+  '';
+  
+  # Script to setup the database
+  setupDatabaseScript = pkgs.writeScript "setup-radarr-db" ''
+    #!${pkgs.stdenv.shell}
+    
+    DB_PATH="${cfg.stateDir}/radarr.db"
+    SCHEMA_PATH="${cfg.stateDir}/radarr.db-shm"
+    
+    # Wait for the database file to exist (max 30 seconds)
+    for i in {1..30}; do
+      if [ -f "$DB_PATH" ]; then
+        break
+      fi
+      echo "Waiting for database file to be created... ($i/30)"
+      sleep 1
+    done
+    
+    if [ ! -f "$DB_PATH" ]; then
+      echo "Database file was not created in time"
+      exit 1
+    fi
+    
+    # Wait for the database to be ready (checking for schema file)
+    for i in {1..30}; do
+      if [ -f "$SCHEMA_PATH" ]; then
+        break
+      fi
+      echo "Waiting for database schema to be ready... ($i/30)"
+      sleep 1
+    done
+
+    # Generate a new salt and hash the password using Python's cryptography
+    HASH_RESULT=$(${pkgs.python3}/bin/python3 ${pkgs.writeText "hash-password.py" ''
+      import base64
+      import os
+      import sys
+      from cryptography.hazmat.primitives import hashes
+      from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+      
+      # Generate a random salt
+      salt = os.urandom(16)
+      salt_b64 = base64.b64encode(salt).decode('utf-8')
+      
+      # Create PBKDF2 instance
+      kdf = PBKDF2HMAC(
+          algorithm=hashes.SHA256(),
+          length=32,
+          salt=salt,
+          iterations=10000,
+      )
+      
+      # Get password from environment
+      password = os.environ['RADARR_PASSWORD'].encode('utf-8')
+      
+      # Generate the key
+      key = kdf.derive(password)
+      password_b64 = base64.b64encode(key).decode('utf-8')
+      
+      # Generate a new UUID for the identifier
+      import uuid
+      identifier = str(uuid.uuid4())
+      
+      # Print results in a format we can parse in the shell
+      print(f"{password_b64}:{salt_b64}:{identifier}")
+    ''} | RADARR_PASSWORD="${cfg.authentication.password}" PYTHONPATH="${pkgs.python3.pkgs.cryptography}/lib/python3.*/site-packages" -)
+    
+    # Split the result into its components
+    PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
+    SALT=$(echo "$HASH_RESULT" | cut -d':' -f2)
+    IDENTIFIER=$(echo "$HASH_RESULT" | cut -d':' -f3)
+    
+    # Use SQLite to modify the database
+    ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "$(generateUserSetupSQL {
+      password = "$PASSWORD_HASH";
+      salt = "$SALT";
+      identifier = "$IDENTIFIER";
+    })"
+    
+    # Ensure proper permissions
+    chown radarr:media "$DB_PATH"
+    chmod 600 "$DB_PATH"
+  '';
+
 in {
 
   imports = [ ./options.nix ];
@@ -75,8 +182,24 @@ in {
           chown radarr:media "${configXmlPath}"
           chmod 600 "${configXmlPath}"
         fi
+
+        # {
+        #     "Id": 1,
+        #     "Identifier": "5fe21d5d-48c1-460d-ba25-536bb3fe2657",
+        #     "Username": "admin",
+        #     "Password": "fmWOYFdp+k74XahsSAwRSQ3bzZWVL0nHhZTvOx9iUP4=",
+        #     "Salt": "tTalJbk9HmfnG5ZN1CDnZw==",
+        #     "Iterations": 10000
+        # }
       '';
       deps = [ ];
+    };
+
+    # Setup the database with the correct user
+    systemd.services.radarr = {
+      postStart = ''
+        ${setupDatabaseScript}
+      '';
     };
 
     # Enable and specify VPN namespace to confine service in.
