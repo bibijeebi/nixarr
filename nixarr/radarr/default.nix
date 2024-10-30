@@ -120,47 +120,7 @@ in {
         python311.withPackages (ps: [ ps.fastpbkdf2 ])
       ];
 
-      preStart = let
-
-        passwordHasher = pkgs.writeTextFile {
-          name = "radarr-password-hasher";
-          destination = "/bin/hash-password";
-          executable = true;
-          text = ''
-            #!${python311}/bin/python3
-            from fastpbkdf2 import pbkdf2_hmac
-            import base64
-            import sys
-
-            def hash_password(password, salt):
-                password_bytes = password.encode('utf-8')
-                salt_bytes = base64.b64decode(salt)
-                
-                hashed = pbkdf2_hmac(
-                    'sha256',
-                    password_bytes,
-                    salt_bytes,
-                    iterations=10000,
-                    dklen=32
-                )
-                return base64.b64encode(hashed).decode('utf-8')
-
-            if __name__ == '__main__':
-                if len(sys.argv) != 3:
-                    print("Usage: hash-password <password> <salt>")
-                    sys.exit(1)
-                
-                password = sys.argv[1]
-                salt = sys.argv[2]
-                
-                try:
-                    print(hash_password(password, salt))
-                except Exception as e:
-                    print(f"Error: {e}", file=sys.stderr)
-                    sys.exit(1)
-          '';
-        };
-      in ''
+      preStart = ''
         # Ensure state directory exists with correct permissions
         mkdir -p ${cfg.stateDir}
         chown radarr:media ${cfg.stateDir}
