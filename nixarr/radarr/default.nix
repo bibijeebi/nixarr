@@ -102,6 +102,11 @@ in {
       }
     ];
 
+    systemd.tmpfiles.settings."10-radarr".${cfg.dataDir}.d = {
+      inherit (cfg) user group;
+      mode = "0700";
+    };
+
     services.radarr = {
       enable = cfg.enable;
       package = cfg.package;
@@ -112,12 +117,25 @@ in {
     };
 
     systemd.services.radarr = {
-      path = with pkgs; [
-        coreutils
-        util-linux
-        sqlite
-        
-      ];
+      description = "Radarr";
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "simple";
+        User = cfg.user;
+        Group = cfg.group;
+        ExecStart =
+          "${cfg.package}/bin/Radarr -nobrowser -data='${cfg.dataDir}'";
+        Restart = "on-failure";
+
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [ cfg.stateDir ];
+        RestrictSUIDSGID = true;
+      };
 
       preStart = ''
         # Ensure state directory exists with correct permissions
@@ -155,16 +173,6 @@ in {
         chown radarr:media ${cfg.stateDir}/config.xml
         chmod 600 ${cfg.stateDir}/config.xml
       '';
-
-      serviceConfig = {
-        # Add security hardening to existing service
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
-        ReadWritePaths = [ cfg.stateDir ];
-        RestrictSUIDSGID = true;
-      };
 
       # Your existing VPN confinement configuration
       vpnConfinement = mkIf cfg.vpn.enable {
