@@ -137,9 +137,7 @@ in {
           <EnableSsl>False</EnableSsl>
           <LaunchBrowser>True</LaunchBrowser>
           <ApiKey>$API_KEY</ApiKey>
-          <AuthenticationMethod>${
-            if cfg.authentication.useFormLogin then "Forms" else "Basic"
-          }</AuthenticationMethod>
+          <AuthenticationMethod>None</AuthenticationMethod>
           <AuthenticationRequired>${
             if cfg.authentication.disabledForLocalAddresses then
               "DisabledForLocalAddresses"
