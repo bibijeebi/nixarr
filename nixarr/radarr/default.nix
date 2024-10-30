@@ -112,12 +112,12 @@ in {
     };
 
     systemd.services.radarr = {
-      path = with pkgs; [
-        coreutils
-        util-linux
-        sqlite
-        python311.withPackages (ps: [ ps.fastpbkdf2 ])
-      ];
+      path = lib.makeBinPath (with pkgs; [
+          coreutils
+          util-linux
+          sqlite
+          (python311.withPackages (ps: [ ps.fastpbkdf2 ]))
+        ]);
 
       preStart = ''
         # Ensure state directory exists with correct permissions
