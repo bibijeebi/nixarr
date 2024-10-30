@@ -116,7 +116,6 @@ in {
         coreutils
         util-linux
         sqlite
-        nodePackages.pbkdf2-sha256
         python311.withPackages (ps: [ ps.fastpbkdf2 ])
       ];
 
