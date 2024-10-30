@@ -127,16 +127,41 @@ in {
 
         # Generate secure random values
         API_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)
+        SALT=$(head -c 16 /dev/urandom | base64)
+        UUID=$(uuidgen)
+
+        HASHED_PASSWORD=$(${pkgs.python311.withPackages (ps: [ ps.fastpbkdf2 ])}/bin/python3 -c << EOF
+          from fastpbkdf2 import pbkdf2_hmac
+          import base64
+          import sys
+
+          password = "${cfg.authentication.password}"
+          salt = "$SALT"
+
+          password_bytes = password.encode("utf-8")
+          salt_bytes = base64.b64decode(salt)
+
+          hashed = pbkdf2_hmac(
+              "sha256",
+              password_bytes,
+              salt_bytes,
+              iterations=10000,
+              dklen=32
+          )
+
+          print(base64.b64encode(hashed).decode("utf-8"))
+        EOF
+        )
 
         # Write config file
-        cat > ${cfg.stateDir}/config.xml <<EOF
+        cat > ${cfg.stateDir}/config.xml << 'EOF'
         <Config>
           <BindAddress>*</BindAddress>
           <Port>${toString cfg.port}</Port>
           <SslPort>9898</SslPort>
           <EnableSsl>False</EnableSsl>
           <LaunchBrowser>True</LaunchBrowser>
-          <ApiKey>$API_KEY</ApiKey>
+          <ApiKey>''${API_KEY}</ApiKey>
           <AuthenticationMethod>${
             if cfg.authentication.useFormLogin then "Forms" else "Basic"
           }</AuthenticationMethod>
@@ -156,6 +181,36 @@ in {
         # Set correct permissions
         chown radarr:media ${cfg.stateDir}/config.xml
         chmod 600 ${cfg.stateDir}/config.xml
+
+        # Ensure database directory exists
+        mkdir -p $(dirname ${cfg.stateDir}/radarr.db)
+
+        # Update database with hashed credentials
+        ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
+          CREATE TABLE IF NOT EXISTS Users (
+            Id INTEGER PRIMARY KEY,
+            Identifier TEXT NOT NULL,
+            Username TEXT NOT NULL,
+            Password TEXT NOT NULL,
+            Salt TEXT NOT NULL
+          );
+          
+          INSERT OR REPLACE INTO Users (
+            Id, Identifier, Username, Password, Salt
+          ) VALUES (
+            1,
+            '$UUID',
+            '${cfg.authentication.username}',
+            '$HASHED_PASSWORD',
+            '$SALT'
+          );
+        EOF
+
+        # Verify database was written correctly
+        if ! ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db "SELECT Id FROM Users WHERE Id = 1;" > /dev/null; then
+          echo "Failed to write user credentials to database"
+          exit 1
+        fi
       '';
 
       serviceConfig = {
