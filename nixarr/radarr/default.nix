@@ -7,24 +7,6 @@
 with lib; let
   cfg = config.nixarr.radarr;
   nixarr = config.nixarr;
-
-  configTemplate = ''
-    <?xml version="1.0"?>
-    <Config>
-      <BindAddress>*</BindAddress>
-      <Port>${toString cfg.port}</Port>
-      <SslPort>9898</SslPort>
-      <EnableSsl>False</EnableSsl>
-      <LaunchBrowser>True</LaunchBrowser>
-      <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
-      <AuthenticationMethod>None</AuthenticationMethod>
-      <AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>
-      <Branch>master</Branch>
-      <LogLevel>debug</LogLevel>
-      <UrlBase></UrlBase>
-      <InstanceName>Radarr</InstanceName>
-    </Config>
-  '';
 in {
   options.nixarr.radarr = {
     enable = mkOption {
@@ -82,7 +64,39 @@ in {
       type = types.int;
       default = 7878;
       example = 7878;
-      description = "Port to use for Radarr";
+      description = mdDoc "Port for the Radarr web interface";
+    };
+
+    authentication = {
+      useFormLogin = mkOption {
+        type = types.bool;
+        default = false;
+        description = mdDoc "Whether to use a login page for authentication";
+      };
+
+      disabledForLocalAddresses = mkOption {
+        type = types.bool;
+        default = false;
+        description = mdDoc "Whether authentication is disabled for local addresses";
+      };
+
+      username = mkOption {
+        type = types.str;
+        default = "admin";
+        description = "Username for web interface access";
+      };
+
+      password = mkOption {
+        type = types.str;
+        default = "changeme";
+        description = mdDoc "Password for web interface access";
+      };
+    };
+
+    logLevel = mkOption {
+      type = types.enum ["debug" "info" "warn" "error"];
+      default = "debug";
+      description = mdDoc "Log level for Radarr";
     };
   };
 
@@ -113,7 +127,37 @@ in {
       dataDir = cfg.stateDir;
     };
 
-    systemd.services.radarr.preStart = ''
+    systemd.services.radarr.preStart = let
+      configTemplate = let
+        port = toString cfg.port;
+        apiKey = "$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)";
+        authenticationMethod =
+          if cfg.authentication.useFormLogin
+          then "Forms"
+          else "Basic";
+        authenticationRequired =
+          if cfg.authentication.disabledForLocalAddresses
+          then "DisabledForLocalAddresses"
+          else "Enabled";
+        logLevel = cfg.logLevel;
+      in ''
+        <?xml version="1.0"?>
+        <Config>
+          <BindAddress>*</BindAddress>
+          <Port>${port}</Port>
+          <SslPort>9898</SslPort>
+          <EnableSsl>False</EnableSsl>
+          <LaunchBrowser>True</LaunchBrowser>
+          <ApiKey>${apiKey}</ApiKey>
+          <AuthenticationMethod>${authenticationMethod}</AuthenticationMethod>
+          <AuthenticationRequired>${authenticationRequired}</AuthenticationRequired>
+          <Branch>master</Branch>
+          <LogLevel>${logLevel}</LogLevel>
+          <UrlBase></UrlBase>
+          <InstanceName>Radarr</InstanceName>
+        </Config>
+      '';
+    in ''
       configFile=${cfg.stateDir}/config.xml
       expectedConfig=$(cat << 'EOL'
       ${configTemplate}
