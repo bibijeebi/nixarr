@@ -6,7 +6,6 @@
 }:
 with lib; let
   cfg = config.nixarr.radarr;
-  defaultPort = 7878;
   nixarr = config.nixarr;
 in {
   options.nixarr.radarr = {
@@ -21,7 +20,7 @@ in {
       '';
     };
 
-    package = mkPackageOption pkgs "radarr" { };
+    package = mkPackageOption pkgs "radarr" {};
 
     stateDir = mkOption {
       type = types.path;
@@ -33,11 +32,11 @@ in {
 
         > **Warning:** Setting this to any path, where the subpath is not
         > owned by root, will fail! For example:
-        > 
+        >
         > ```nix
         >   stateDir = /home/user/nixarr/.state/radarr
         > ```
-        > 
+        >
         > Is not supported, because `/home/user` is owned by `user`.
       '';
     };
@@ -59,6 +58,13 @@ in {
 
         Route Radarr traffic through the VPN.
       '';
+    };
+
+    port = mkOption {
+      type = types.int;
+      default = 7878;
+      example = 7878;
+      description = "Port to use for Radarr";
     };
   };
 
@@ -89,6 +95,32 @@ in {
       dataDir = cfg.stateDir;
     };
 
+    systemd.services.radarr = {
+      preStart = ''
+        configFile=${cfg.stateDir}/config.xml
+        if [ ! -f $configFile ]; then
+          cat > $configFile << EOL
+          <Config>
+            <BindAddress>*</BindAddress>
+            <Port>${toString cfg.port}</Port>
+            <SslPort>9898</SslPort>
+            <EnableSsl>False</EnableSsl>
+            <LaunchBrowser>True</LaunchBrowser>
+            <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+            <AuthenticationMethod>Basic</AuthenticationMethod>
+            <AuthenticationRequired>Enabled</AuthenticationRequired>
+            <Branch>master</Branch>
+            <LogLevel>debug</LogLevel>
+            <UrlBase></UrlBase>
+            <InstanceName>Radarr</InstanceName>
+          </Config>
+          EOL
+          chown radarr:media $configFile
+          chmod 600 $configFile
+        fi
+      '';
+    };
+
     # Enable and specify VPN namespace to confine service in.
     systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
       enable = true;
@@ -99,8 +131,8 @@ in {
     vpnNamespaces.wg = mkIf cfg.vpn.enable {
       portMappings = [
         {
-          from = defaultPort;
-          to = defaultPort;
+          from = cfg.port;
+          to = cfg.port;
         }
       ];
     };
@@ -112,17 +144,17 @@ in {
       recommendedOptimisation = true;
       recommendedGzipSettings = true;
 
-      virtualHosts."127.0.0.1:${builtins.toString defaultPort}" = {
+      virtualHosts."127.0.0.1:${builtins.toString cfg.port}" = {
         listen = [
           {
             addr = "0.0.0.0";
-            port = defaultPort;
+            port = cfg.port;
           }
         ];
         locations."/" = {
           recommendedProxySettings = true;
           proxyWebsockets = true;
-          proxyPass = "http://192.168.15.1:${builtins.toString defaultPort}";
+          proxyPass = "http://192.168.15.1:${builtins.toString cfg.port}";
         };
       };
     };
