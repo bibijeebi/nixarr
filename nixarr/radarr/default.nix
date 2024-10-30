@@ -95,31 +95,30 @@ in {
       dataDir = cfg.stateDir;
     };
 
-    systemd.services.radarr = {
-      preStart = ''
-        configFile=${cfg.stateDir}/config.xml
-        if [ ! -f $configFile ]; then
-          cat > $configFile << EOL
-          <Config>
-            <BindAddress>*</BindAddress>
-            <Port>${toString cfg.port}</Port>
-            <SslPort>9898</SslPort>
-            <EnableSsl>False</EnableSsl>
-            <LaunchBrowser>True</LaunchBrowser>
-            <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
-            <AuthenticationMethod>Basic</AuthenticationMethod>
-            <AuthenticationRequired>Enabled</AuthenticationRequired>
-            <Branch>master</Branch>
-            <LogLevel>debug</LogLevel>
-            <UrlBase></UrlBase>
-            <InstanceName>Radarr</InstanceName>
-          </Config>
-          EOL
-          chown radarr:media $configFile
-          chmod 600 $configFile
-        fi
-      '';
-    };
+    systemd.services.radarr.preStart = ''
+      configFile=${cfg.stateDir}/config.xml
+      if [ ! -f $configFile ]; then
+        cat > $configFile <<'EOL'
+      <?xml version="1.0"?>
+      <Config>
+        <BindAddress>*</BindAddress>
+        <Port>${toString cfg.port}</Port>
+        <SslPort>9898</SslPort>
+        <EnableSsl>False</EnableSsl>
+        <LaunchBrowser>True</LaunchBrowser>
+        <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+        <AuthenticationMethod>Basic</AuthenticationMethod>
+        <AuthenticationRequired>Enabled</AuthenticationRequired>
+        <Branch>master</Branch>
+        <LogLevel>debug</LogLevel>
+        <UrlBase></UrlBase>
+        <InstanceName>Radarr</InstanceName>
+      </Config>
+      EOL
+        chown radarr:media $configFile
+        chmod 600 $configFile
+      fi
+    '';
 
     # Enable and specify VPN namespace to confine service in.
     systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
