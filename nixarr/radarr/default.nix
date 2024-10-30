@@ -118,7 +118,7 @@ in {
       postStart = ''
         DB_PATH="${cfg.stateDir}/radarr.db"
         SCHEMA_PATH="${cfg.stateDir}/radarr.db-shm"
-        
+
         # Wait for the database file to exist (max 30 seconds)
         for i in {1..30}; do
           if [ -f "$DB_PATH" ]; then
@@ -127,12 +127,12 @@ in {
           echo "Waiting for database file to be created... ($i/30)"
           sleep 1
         done
-        
+
         if [ ! -f "$DB_PATH" ]; then
           echo "Database file was not created in time"
           exit 1
         fi
-        
+
         # Wait for the database to be ready (checking for schema file)
         for i in {1..30}; do
           if [ -f "$SCHEMA_PATH" ]; then
@@ -176,19 +176,19 @@ in {
           # Print results in a format we can parse in the shell
           print(f"{password_b64}:{salt_b64}:{identifier}")
         ''} | RADARR_PASSWORD="${cfg.authentication.password}" PYTHONPATH="${pkgs.python3.pkgs.cryptography}/lib/python3.*/site-packages" -)
-        
+
         # Split the result into its components
         PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
         SALT=$(echo "$HASH_RESULT" | cut -d':' -f2)
         IDENTIFIER=$(echo "$HASH_RESULT" | cut -d':' -f3)
-        
+
         # Use SQLite to modify the database
-        ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "$(generateUserSetupSQL {
+        ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "${generateUserSetupSQL {
           password = "$PASSWORD_HASH";
           salt = "$SALT";
           identifier = "$IDENTIFIER";
-        })"
-        
+        }}"
+
         # Ensure proper permissions
         chown radarr:media "$DB_PATH"
         chmod 600 "$DB_PATH"
