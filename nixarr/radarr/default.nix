@@ -130,7 +130,7 @@ in {
         SALT=$(head -c 16 /dev/urandom | base64)
         UUID=$(uuidgen)
 
-        HASHED_PASSWORD=$(${python311.withPackages (ps: [ ps.fastpbkdf2 ])}/bin/python3 -c <<'EOF' "${cfg.authentication.password}" "$SALT")
+        HASHED_PASSWORD=$(${pkgs.python311.withPackages (ps: [ ps.fastpbkdf2 ])}/bin/python3 -c <<'EOF' "${cfg.authentication.password}" "$SALT")
           from fastpbkdf2 import pbkdf2_hmac
           import base64
           import sys
