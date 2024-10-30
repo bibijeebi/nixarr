@@ -15,7 +15,7 @@ let
       <LaunchBrowser>true</LaunchBrowser>
       <ApiKey>${
         builtins.substring 0 32
-        (builtins.hashString "sha256" (builtins.toString builtins.currentTime))
+        (builtins.hashString "sha256" config.networking.hostName)
       }</ApiKey>
       <AuthenticationMethod>${
         if cfg.authentication.useFormLogin then "Forms" else "Basic"
@@ -68,7 +68,7 @@ in {
       text = ''
         # Ensure the state directory exists
         mkdir -p "${cfg.stateDir}"
-        
+
         # Write the config file if it doesn't exist or if we're forcing an update
         if [ ! -f "${configXmlPath}" ] || [ "$1" = "force" ]; then
           echo "${configXmlText}" > "${configXmlPath}"
@@ -76,7 +76,7 @@ in {
           chmod 600 "${configXmlPath}"
         fi
       '';
-      deps = [];
+      deps = [ ];
     };
 
     # Enable and specify VPN namespace to confine service in.
