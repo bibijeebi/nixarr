@@ -150,8 +150,8 @@ in {
     #   '';
     # };
 
-    # Your existing VPN confinement configuration
-    vpnConfinement = mkIf cfg.vpn.enable {
+    # Enable and specify VPN namespace to confine service in.
+    systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
       enable = true;
       vpnNamespace = "wg";
     };
