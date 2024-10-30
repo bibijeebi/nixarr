@@ -34,14 +34,10 @@ let
   '';
 
 
-  # Function to generate SQL for user setup
-  # We're using the exact format from Radarr's database
-  generateUserSetupSQL = { password, salt, identifier }: ''
+  # The SQL template as a string that we'll interpolate at runtime
+  userSetupSQL = ''
     BEGIN TRANSACTION;
-    -- Delete existing users first to ensure clean state
     DELETE FROM Users;
-    
-    -- Insert the main admin user
     INSERT INTO Users (
       Identifier,
       Username,
@@ -49,10 +45,10 @@ let
       Salt,
       Iterations
     ) VALUES (
-      '${identifier}',
+      '$IDENTIFIER',
       '${cfg.authentication.username}',
-      '${password}',
-      '${salt}',
+      '$PASSWORD_HASH',
+      '$SALT',
       10000
     );
     COMMIT;
@@ -114,7 +110,7 @@ in {
     };
 
     # Setup the database with the correct user
-    systemd.services.radarr = {
+     systemd.services.radarr = {
       postStart = ''
         DB_PATH="${cfg.stateDir}/radarr.db"
         SCHEMA_PATH="${cfg.stateDir}/radarr.db-shm"
@@ -147,6 +143,7 @@ in {
           import base64
           import os
           import sys
+          import uuid
           from cryptography.hazmat.primitives import hashes
           from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
           
@@ -170,12 +167,11 @@ in {
           password_b64 = base64.b64encode(key).decode('utf-8')
           
           # Generate a new UUID for the identifier
-          import uuid
           identifier = str(uuid.uuid4())
           
           # Print results in a format we can parse in the shell
           print(f"{password_b64}:{salt_b64}:{identifier}")
-        ''} | RADARR_PASSWORD="${cfg.authentication.password}" PYTHONPATH="${pkgs.python3.pkgs.cryptography}/lib/python3.*/site-packages" -)
+        ''} | RADARR_PASSWORD="${cfg.authentication.password}" -)
 
         # Split the result into its components
         PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
@@ -183,17 +179,14 @@ in {
         IDENTIFIER=$(echo "$HASH_RESULT" | cut -d':' -f3)
 
         # Use SQLite to modify the database
-        ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "${generateUserSetupSQL {
-          password = "$PASSWORD_HASH";
-          salt = "$SALT";
-          identifier = "$IDENTIFIER";
-        }}"
+        ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "${userSetupSQL}"
 
         # Ensure proper permissions
         chown radarr:media "$DB_PATH"
         chmod 600 "$DB_PATH"
       '';
     };
+
 
     # Enable and specify VPN namespace to confine service in.
     systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
