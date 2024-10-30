@@ -102,7 +102,7 @@ in {
       }
     ];
 
-    systemd.tmpfiles.settings."10-radarr".${cfg.dataDir}.d = {
+    systemd.tmpfiles.settings."10-radarr".${cfg.stateDir}.d = {
       inherit (cfg) user group;
       mode = "0700";
     };
@@ -126,7 +126,7 @@ in {
         User = cfg.user;
         Group = cfg.group;
         ExecStart =
-          "${cfg.package}/bin/Radarr -nobrowser -data='${cfg.dataDir}'";
+          "${cfg.package}/bin/Radarr -nobrowser -data='${cfg.stateDir}'";
         Restart = "on-failure";
 
         NoNewPrivileges = true;
