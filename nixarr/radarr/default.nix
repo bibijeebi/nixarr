@@ -7,6 +7,24 @@
 with lib; let
   cfg = config.nixarr.radarr;
   nixarr = config.nixarr;
+
+  configTemplate = ''
+    <?xml version="1.0"?>
+    <Config>
+      <BindAddress>*</BindAddress>
+      <Port>${toString cfg.port}</Port>
+      <SslPort>9898</SslPort>
+      <EnableSsl>False</EnableSsl>
+      <LaunchBrowser>True</LaunchBrowser>
+      <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
+      <AuthenticationMethod>Basic</AuthenticationMethod>
+      <AuthenticationRequired>Enabled</AuthenticationRequired>
+      <Branch>master</Branch>
+      <LogLevel>debug</LogLevel>
+      <UrlBase></UrlBase>
+      <InstanceName>Radarr</InstanceName>
+    </Config>
+  '';
 in {
   options.nixarr.radarr = {
     enable = mkOption {
@@ -97,28 +115,15 @@ in {
 
     systemd.services.radarr.preStart = ''
       configFile=${cfg.stateDir}/config.xml
-      if [ ! -f $configFile ]; then
-        cat > $configFile <<'EOL'
-      <?xml version="1.0"?>
-      <Config>
-        <BindAddress>*</BindAddress>
-        <Port>${toString cfg.port}</Port>
-        <SslPort>9898</SslPort>
-        <EnableSsl>False</EnableSsl>
-        <LaunchBrowser>True</LaunchBrowser>
-        <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
-        <AuthenticationMethod>Basic</AuthenticationMethod>
-        <AuthenticationRequired>Enabled</AuthenticationRequired>
-        <Branch>master</Branch>
-        <LogLevel>debug</LogLevel>
-        <UrlBase></UrlBase>
-        <InstanceName>Radarr</InstanceName>
-      </Config>
+      expectedConfig=$(cat << 'EOL'
+      ${configTemplate}
       EOL
+      )
+      if [ ! -f $configFile ] || [ "$(cat $configFile)" != "$expectedConfig" ]; then
+        echo "$expectedConfig" > $configFile
         chown radarr:media $configFile
         chmod 600 $configFile
       fi
-      echo "Radarr config file created at $configFile"
     '';
 
     # Enable and specify VPN namespace to confine service in.
