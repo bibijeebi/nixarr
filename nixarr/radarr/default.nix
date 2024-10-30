@@ -112,12 +112,12 @@ in {
     };
 
     systemd.services.radarr = {
-      path = lib.makeBinPath (with pkgs; [
-          coreutils
-          util-linux
-          sqlite
-          (python311.withPackages (ps: [ ps.fastpbkdf2 ]))
-        ]);
+      path = with pkgs; [
+        coreutils
+        util-linux
+        sqlite
+        
+      ];
 
       preStart = ''
         # Ensure state directory exists with correct permissions
@@ -130,35 +130,27 @@ in {
         SALT=$(head -c 16 /dev/urandom | base64)
         UUID=$(uuidgen)
 
-        HASHED_PASSWORD=$(python3 -c '
-        from fastpbkdf2 import pbkdf2_hmac
-        import base64
-        import sys
+        HASHED_PASSWORD=$(${python311.withPackages (ps: [ ps.fastpbkdf2 ])}/bin/python3 -c <<'EOF' "${cfg.authentication.password}" "$SALT")
+          from fastpbkdf2 import pbkdf2_hmac
+          import base64
+          import sys
 
-        password = sys.argv[1]
-        salt = sys.argv[2]
+          password = sys.argv[1]
+          salt = sys.argv[2]
 
-        password_bytes = password.encode("utf-8")
-        salt_bytes = base64.b64decode(salt)
+          password_bytes = password.encode("utf-8")
+          salt_bytes = base64.b64decode(salt)
 
-        hashed = pbkdf2_hmac(
-            "sha256",
-            password_bytes,
-            salt_bytes,
-            iterations=10000,
-            dklen=32
-        )
+          hashed = pbkdf2_hmac(
+              "sha256",
+              password_bytes,
+              salt_bytes,
+              iterations=10000,
+              dklen=32
+          )
 
-        print(base64.b64encode(hashed).decode("utf-8"))
-        ' "${cfg.authentication.password}" "$SALT")
-
-        # Hash password using PBKDF2
-        HASHED_PASSWORD=$(pbkdf2-sha256 \
-          --iterations 10000 \
-          --salt "$SALT" \
-          --password "${cfg.authentication.password}" \
-          --digest-size 32 \
-          --encoding base64
+          print(base64.b64encode(hashed).decode("utf-8"))
+        EOF
         )
 
         # Write config file
@@ -194,7 +186,7 @@ in {
         mkdir -p $(dirname ${cfg.stateDir}/radarr.db)
 
         # Update database with hashed credentials
-        sqlite3 ${cfg.stateDir}/radarr.db << EOF
+        ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db << EOF
           CREATE TABLE IF NOT EXISTS Users (
             Id INTEGER PRIMARY KEY,
             Identifier TEXT NOT NULL,
@@ -215,7 +207,7 @@ in {
         EOF
 
         # Verify database was written correctly
-        if ! sqlite3 ${cfg.stateDir}/radarr.db "SELECT Id FROM Users WHERE Id = 1;" > /dev/null; then
+        if ! ${pkgs.sqlite}/bin/sqlite3 ${cfg.stateDir}/radarr.db "SELECT Id FROM Users WHERE Id = 1;" > /dev/null; then
           echo "Failed to write user credentials to database"
           exit 1
         fi
