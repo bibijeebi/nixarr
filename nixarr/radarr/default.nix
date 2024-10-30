@@ -118,6 +118,7 @@ in {
         chown radarr:media $configFile
         chmod 600 $configFile
       fi
+      echo "Radarr config file created at $configFile"
     '';
 
     # Enable and specify VPN namespace to confine service in.
