@@ -102,11 +102,6 @@ in {
       }
     ];
 
-    systemd.tmpfiles.settings."10-radarr".${cfg.stateDir}.d = {
-      inherit (cfg) user group;
-      mode = "0700";
-    };
-
     services.radarr = {
       enable = cfg.enable;
       package = cfg.package;
