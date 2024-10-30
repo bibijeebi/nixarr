@@ -17,8 +17,8 @@ with lib; let
       <EnableSsl>False</EnableSsl>
       <LaunchBrowser>True</LaunchBrowser>
       <ApiKey>$(head -c 32 /dev/urandom | base64 | tr -d '/+' | cut -c -32)</ApiKey>
-      <AuthenticationMethod>Basic</AuthenticationMethod>
-      <AuthenticationRequired>Enabled</AuthenticationRequired>
+      <AuthenticationMethod>None</AuthenticationMethod>
+      <AuthenticationRequired>False</AuthenticationRequired>
       <Branch>master</Branch>
       <LogLevel>debug</LogLevel>
       <UrlBase></UrlBase>
