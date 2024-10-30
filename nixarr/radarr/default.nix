@@ -118,8 +118,8 @@ in {
 
       serviceConfig = {
         Type = "simple";
-        User = cfg.user;
-        Group = cfg.group;
+        User = "radarr";
+        Group = "media";
         ExecStart =
           "${cfg.package}/bin/Radarr -nobrowser -data='${cfg.stateDir}'";
         Restart = "on-failure";
