@@ -8,11 +8,7 @@ let
     builtins.substring 0 32 (builtins.hashString "sha256" string);
 
   configXml = let
-    bindAddress = "*";
     port = builtins.toString cfg.port;
-    sslPort = "9898";
-    enableSsl = "False";
-    launchBrowser = "False";
     apiKey = generateApiKey "radarr@${config.networking.hostName}";
     authenticationMethod =
       if cfg.authentication.useFormLogin then "Forms" else "Basic";
@@ -21,26 +17,23 @@ let
         "DisabledForLocalAddresses"
       else
         "Enabled";
-    branch = "master";
     logLevel = cfg.logLevel;
     urlBase = cfg.urlBase;
-    instanceName = "Radarr";
-    theme = "dark";
   in ''
     <Config>
-      <BindAddress>${bindAddress}</BindAddress>
+      <BindAddress>"*"</BindAddress>
       <Port>${port}</Port>
-      <SslPort>${sslPort}</SslPort>
-      <EnableSsl>${enableSsl}</EnableSsl>
-      <LaunchBrowser>${launchBrowser}</LaunchBrowser>
+      <SslPort>9898</SslPort>
+      <EnableSsl>False</EnableSsl>
+      <LaunchBrowser>False</LaunchBrowser>
       <ApiKey>${apiKey}</ApiKey>
       <AuthenticationMethod>${authenticationMethod}</AuthenticationMethod>
       <AuthenticationRequired>${authenticationRequired}</AuthenticationRequired>
-      <Branch>${branch}</Branch>
+      <Branch>master</Branch>
       <LogLevel>${logLevel}</LogLevel>
       <UrlBase>${urlBase}</UrlBase>
-      <InstanceName>${instanceName}</InstanceName>
-      <Theme>${theme}</Theme>
+      <InstanceName>Radarr</InstanceName>
+      <Theme>dark</Theme>
     </Config>
   '';
 
