@@ -74,7 +74,7 @@ in {
 
       password = mkOption {
         type = types.str;
-        default = "n";
+        default = "password";
         description = mdDoc "Password for web interface access";
       };
     };
