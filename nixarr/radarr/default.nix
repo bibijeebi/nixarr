@@ -74,7 +74,7 @@ in {
 
       password = mkOption {
         type = types.str;
-        default = "changeme";
+        default = "n";
         description = mdDoc "Password for web interface access";
       };
     };
@@ -175,7 +175,13 @@ in {
         fi
 
         SALT=$(${pkgs.openssl}/bin/openssl rand 16 | base64)
-        HASH=$(echo -n ${cfg.authentication.password} | ${pkgs.openssl}/bin/openssl enc -aes-256-cbc -pbkdf2 -nosalt -pass stdin -S $(echo -n $SALT | base64 -d | ${pkgs.xxd}/bin/xxd -p) -iter 10000 -md sha1 -P | grep '^key=' | cut -d'=' -f2 | ${pkgs.xxd}/bin/xxd -r -p | base64)
+        HASH=$(echo -n ${cfg.authentication.password} | \
+          ${pkgs.openssl}/bin/openssl enc -aes-256-cbc -pbkdf2 -nosalt \
+          -pass stdin \
+          -S (echo -n $SALT | base64 -d | ${pkgs.xxd}/bin/xxd -p) \
+          -iter 10000 \
+          -md sha512 \
+          -P | grep '^key=' | cut -d'=' -f2 | ${pkgs.xxd}/bin/xxd -r -p | base64)
         IDENTIFIER=$(${pkgs.util-linux}/bin/uuidgen)
 
         # Use SQLite to modify the database
