@@ -41,49 +41,19 @@ let
     name = "configure-radarr";
     runtimeInputs = with pkgs; [ sqlite jq openssl nodejs libuuid ];
     text = ''
-      function log() {
-        echo "[Radarr Setup] $1" >&2
-      }
+      mkdir -p "${cfg.stateDir}"
 
-      function fail() {
-        log "ERROR: $1"
-        exit 1
-      }
-
-      # Verify state directory permissions
-      if [ ! -w "${cfg.stateDir}" ]; then
-        fail "State directory not writable: ${cfg.stateDir}"
-      fi
-
-      # Database verification
-      if [ -f "${cfg.stateDir}/radarr.db" ]; then
-        if ! sqlite3 "${cfg.stateDir}/radarr.db" "PRAGMA integrity_check;" | grep -q "ok"; then
-          fail "Database corruption detected"
-        fi
-      fi
-
-      # Create the state directory if it doesn't exist
-      if [ ! -d "${cfg.stateDir}" ]; then
-        mkdir -p "${cfg.stateDir}"
-      fi
-
-      # Write the config file if it doesn't exists
-      if [ ! -f "${cfg.stateDir}/config.xml" ]; then
-        cat <<'EOF' > "${cfg.stateDir}/config.xml"
+      cat <<'EOF' > "${cfg.stateDir}/config.xml"
       ${configXml}
       EOF
-        chown radarr:media "${cfg.stateDir}/config.xml"
-        chmod 600 "${cfg.stateDir}/config.xml"
-      fi
+      chown radarr:media "${cfg.stateDir}/config.xml"
+      chmod 600 "${cfg.stateDir}/config.xml"
 
-      # Create the database file if it doesn't exist
-      if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
-        sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
+      sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
       ${builtins.readFile ./init.sql}
       EOF
-        chown radarr:media "${cfg.stateDir}/radarr.db"
-        chmod 600 "${cfg.stateDir}/radarr.db"
-      fi
+      chown radarr:media "${cfg.stateDir}/radarr.db"
+      chmod 600 "${cfg.stateDir}/radarr.db"
 
       SALT=$(openssl rand 16 | base64)
       HASH=$(node -e "
@@ -99,10 +69,6 @@ let
       INSERT INTO Users (Identifier, Username, Password, Salt, Iterations) VALUES ('$(uuidgen)', '${cfg.authentication.username}', '$HASH', '$SALT', 10000);
       COMMIT;
       EOF
-
-      # Ensure proper permissions
-      chown radarr:media "${cfg.stateDir}/radarr.db"
-      chmod 600 "${cfg.stateDir}/radarr.db"
     '';
   };
 in {
