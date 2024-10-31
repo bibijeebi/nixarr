@@ -157,7 +157,7 @@ in {
         if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
           ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
             ${builtins.readFile ./radarr-db.sql}
-          EOF
+        EOF
           chown radarr:media "${cfg.stateDir}/radarr.db"
           chmod 600 "${cfg.stateDir}/radarr.db"
         fi
