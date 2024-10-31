@@ -155,7 +155,9 @@ in {
 
         # Create the database file if it doesn't exist
         if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
-          ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" < ${builtins.readFile ./radarr-db.sql}
+          ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
+            ${builtins.readFile ./radarr-db.sql}
+          EOF
           chown radarr:media "${cfg.stateDir}/radarr.db"
           chmod 600 "${cfg.stateDir}/radarr.db"
         fi
