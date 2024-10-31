@@ -112,6 +112,18 @@ in {
       dataDir = cfg.stateDir;
     };
 
+    # Add systemd service hardening
+    systemd.services.radarr = {
+      serviceConfig = {
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [ cfg.stateDir ];
+        RestrictSUIDSGID = true;
+      };
+    };
+
     # Write the config.xml file
     system.activationScripts.configure-radarr = {
       text = ''
@@ -163,11 +175,9 @@ in {
         fi
 
         # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${ pkgs.python3.withPackages (ps: [ ps.cryptography ]) }/bin/python3 -c <<'EOF'
+        HASH_RESULT=$(${pkgs.python3.withPackages (ps: [ ps.cryptography ])}/bin/python3 -c <<'EOF'
           import base64
           import os
-          import sys
-          import uuid
           from cryptography.hazmat.primitives import hashes
           from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
@@ -182,20 +192,16 @@ in {
           )
 
           password = "${cfg.authentication.password}".encode('utf-8')
-
           key = kdf.derive(password)
           password_b64 = base64.b64encode(key).decode('utf-8')
 
-          identifier = str(uuid.uuid4())
-
-          print(f"{password_b64}:{salt_b64}:{identifier}")
+          print(f"{password_b64}:{salt_b64}")
         EOF
         )
 
         # Split the result into its components
         PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
         SALT=$(echo "$HASH_RESULT" | cut -d':' -f2)
-        IDENTIFIER=$(echo "$HASH_RESULT" | cut -d':' -f3)
 
         # Use SQLite to modify the database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
@@ -208,7 +214,7 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '$IDENTIFIER',
+            '1',
             '${cfg.authentication.username}',
             '$PASSWORD_HASH',
             '$SALT',
