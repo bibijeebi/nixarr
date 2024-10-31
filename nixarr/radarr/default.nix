@@ -9,8 +9,8 @@ let
 
   configXml = let
     bindAddress = "*";
-    port = cfg.port;
-    sslPort = 9898;
+    port = builtins.toString cfg.port;
+    sslPort = "9898";
     enableSsl = "False";
     launchBrowser = "False";
     apiKey = generateApiKey "radarr@${config.networking.hostName}";
