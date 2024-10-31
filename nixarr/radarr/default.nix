@@ -32,28 +32,6 @@ let
       <InstanceName>Radarr</InstanceName>
     </Config>
   '';
-
-
-  # The SQL template as a string that we'll interpolate at runtime
-  userSetupSQL = ''
-    BEGIN TRANSACTION;
-    DELETE FROM Users;
-    INSERT INTO Users (
-      Identifier,
-      Username,
-      Password,
-      Salt,
-      Iterations
-    ) VALUES (
-      '$IDENTIFIER',
-      '${cfg.authentication.username}',
-      '$PASSWORD_HASH',
-      '$SALT',
-      10000
-    );
-    COMMIT;
-  '';
-  
 in {
 
   imports = [ ./options.nix ];
@@ -85,93 +63,58 @@ in {
     };
 
     # Write the config.xml file
-    system.activationScripts.radarr-config = {
+    system.activationScripts.configure-radarr = {
       text = ''
-        # Ensure the state directory exists
-        mkdir -p "${cfg.stateDir}"
+        # Create the state directory if it doesn't exist
+        if [ ! -d "${cfg.stateDir}" ]; then
+          mkdir -p "${cfg.stateDir}"
+        fi
 
-        # Write the config file if it doesn't exist or if we're forcing an update
-        if [ ! -f "${configXmlPath}" ] || [ "$1" = "force" ]; then
+        # Write the config file if it doesn't exists
+        if [ ! -f "${configXmlPath}" ]; then
           echo "${configXmlText}" > "${configXmlPath}"
           chown radarr:media "${configXmlPath}"
           chmod 600 "${configXmlPath}"
         fi
 
-        # {
-        #     "Id": 1,
-        #     "Identifier": "5fe21d5d-48c1-460d-ba25-536bb3fe2657",
-        #     "Username": "admin",
-        #     "Password": "fmWOYFdp+k74XahsSAwRSQ3bzZWVL0nHhZTvOx9iUP4=",
-        #     "Salt": "tTalJbk9HmfnG5ZN1CDnZw==",
-        #     "Iterations": 10000
-        # }
-      '';
-      deps = [ ];
-    };
-
-    # Setup the database with the correct user
-     systemd.services.radarr = {
-      postStart = ''
-        DB_PATH="${cfg.stateDir}/radarr.db"
-        SCHEMA_PATH="${cfg.stateDir}/radarr.db-shm"
-
-        # Wait for the database file to exist (max 30 seconds)
-        for i in {1..30}; do
-          if [ -f "$DB_PATH" ]; then
-            break
-          fi
-          echo "Waiting for database file to be created... ($i/30)"
-          sleep 1
-        done
-
-        if [ ! -f "$DB_PATH" ]; then
-          echo "Database file was not created in time"
-          exit 1
+        # Create the database file if it doesn't exist
+        if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
+          ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
+            ${userSetupSQL}
+          EOF
+          chown radarr:media "${cfg.stateDir}/radarr.db"
+          chmod 600 "${cfg.stateDir}/radarr.db"
         fi
 
-        # Wait for the database to be ready (checking for schema file)
-        for i in {1..30}; do
-          if [ -f "$SCHEMA_PATH" ]; then
-            break
-          fi
-          echo "Waiting for database schema to be ready... ($i/30)"
-          sleep 1
-        done
-
         # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${pkgs.python3.withPackages (ps: [ ps.cryptography ])}/bin/python3 ${pkgs.writeText "hash-password.py" ''
+        HASH_RESULT=$(${ pkgs.python3.withPackages (ps: [ ps.cryptography ]) }/bin/python3 -c <<'EOF'
           import base64
           import os
           import sys
           import uuid
           from cryptography.hazmat.primitives import hashes
           from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-          
-          # Generate a random salt
+
           salt = os.urandom(16)
           salt_b64 = base64.b64encode(salt).decode('utf-8')
-          
-          # Create PBKDF2 instance
+
           kdf = PBKDF2HMAC(
-              algorithm=hashes.SHA256(),
-              length=32,
-              salt=salt,
-              iterations=10000,
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=10000,
           )
-          
-          # Get password from environment
-          password = os.environ['RADARR_PASSWORD'].encode('utf-8')
-          
-          # Generate the key
+
+          password = "${cfg.authentication.password}".encode('utf-8')
+
           key = kdf.derive(password)
           password_b64 = base64.b64encode(key).decode('utf-8')
-          
-          # Generate a new UUID for the identifier
+
           identifier = str(uuid.uuid4())
-          
-          # Print results in a format we can parse in the shell
+
           print(f"{password_b64}:{salt_b64}:{identifier}")
-        ''} | RADARR_PASSWORD="${cfg.authentication.password}" -)
+        EOF
+        )
 
         # Split the result into its components
         PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
@@ -179,14 +122,30 @@ in {
         IDENTIFIER=$(echo "$HASH_RESULT" | cut -d':' -f3)
 
         # Use SQLite to modify the database
-        ${pkgs.sqlite}/bin/sqlite3 "$DB_PATH" "${userSetupSQL}"
+        ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
+          BEGIN TRANSACTION;
+          DELETE FROM Users;
+          INSERT INTO Users (
+            Identifier,
+            Username,
+            Password,
+            Salt,
+            Iterations
+          ) VALUES (
+            '$IDENTIFIER',
+            '${cfg.authentication.username}',
+            '$PASSWORD_HASH',
+            '$SALT',
+            10000
+          );
+          COMMIT;
+        EOF
 
         # Ensure proper permissions
-        chown radarr:media "$DB_PATH"
-        chmod 600 "$DB_PATH"
+        chown radarr:media "${cfg.stateDir}/radarr.db"
+        chmod 600 "${cfg.stateDir}/radarr.db"
       '';
     };
-
 
     # Enable and specify VPN namespace to confine service in.
     systemd.services.radarr.vpnConfinement = mkIf cfg.vpn.enable {
