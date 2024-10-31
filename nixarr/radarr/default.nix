@@ -70,8 +70,8 @@ let
       # Write the config file if it doesn't exists
       if [ ! -f "${cfg.stateDir}/config.xml" ]; then
         cat <<'EOF' > "${cfg.stateDir}/config.xml"
-        ${configXml}
-        EOF
+      ${configXml}
+      EOF
         chown radarr:media "${cfg.stateDir}/config.xml"
         chmod 600 "${cfg.stateDir}/config.xml"
       fi
@@ -79,8 +79,8 @@ let
       # Create the database file if it doesn't exist
       if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
         sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
-        ${builtins.readFile ./init.sql}
-        EOF
+      ${builtins.readFile ./init.sql}
+      EOF
         chown radarr:media "${cfg.stateDir}/radarr.db"
         chmod 600 "${cfg.stateDir}/radarr.db"
       fi
