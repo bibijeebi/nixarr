@@ -21,7 +21,7 @@ let
     urlBase = cfg.urlBase;
   in ''
     <Config>
-      <BindAddress>"*"</BindAddress>
+      <BindAddress>*</BindAddress>
       <Port>${port}</Port>
       <SslPort>9898</SslPort>
       <EnableSsl>False</EnableSsl>
