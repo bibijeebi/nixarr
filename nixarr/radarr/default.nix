@@ -175,7 +175,7 @@ in {
         fi
 
         # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${pkgs.python3}/bin/python3 -c <<EOF
+        HASH_RESULT=$(${pkgs.python3}/bin/python3 -c '
           import base64
           import hashlib
           import sys
@@ -185,8 +185,7 @@ in {
           iterations = 10000
           dk = hashlib.pbkdf2_hmac('sha256', password, salt, iterations, 32)
           print(f"{base64.b64encode(dk).decode('utf-8')}:{salt}")
-        EOF
-        )
+        ')
 
         # Use SQLite to modify the database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
