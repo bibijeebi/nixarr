@@ -44,20 +44,6 @@ let
     </Config>
   '';
 
-  createUserScript = pkgs.writeShellApplication {
-    name = "create-radarr-user";
-    runtimeInputs = [ pkgs.nodejs ];
-    text = ''
-      node -e "
-        const crypto = require('crypto');
-        const hash = crypto.pbkdf2Sync(process.argv[1], Buffer.from(process.argv[2], 'base64'), 10000, 32, 'sha512');
-        console.log(hash.toString('base64'));
-      " "$1" "$2"
-    '';
-  };
-
-  initSql = builtins.readFile ./init.sql;
-
   preStartScript = pkgs.writeShellApplication {
     name = "configure-radarr";
     runtimeInputs = [
@@ -107,33 +93,25 @@ let
       # Create the database file if it doesn't exist
       if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
         sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
-        ${initSql}
+        ${builtins.readFile ./init.sql}
         EOF
         chown radarr:media "${cfg.stateDir}/radarr.db"
         chmod 600 "${cfg.stateDir}/radarr.db"
       fi
 
       SALT=$(openssl rand 16 | base64)
-      HASH=$(createUserScript "${cfg.authentication.password}" "$SALT")
+      HASH=$(node -e "
+        const crypto = require('crypto');
+        const hash = crypto.pbkdf2Sync(process.argv[1], Buffer.from(process.argv[2], 'base64'), 10000, 32, 'sha512');
+        console.log(hash.toString('base64'));
+      " "${cfg.authentication.password}" "$SALT")
 
       # Use SQLite to modify the database
       sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
-        BEGIN TRANSACTION;
-        DELETE FROM Users;
-        INSERT INTO Users (
-          Identifier,
-          Username,
-          Password,
-          Salt,
-          Iterations
-        ) VALUES (
-          '$(uuidgen)',
-          '${cfg.authentication.username}',
-          '$HASH',
-          '$SALT',
-          10000
-        );
-        COMMIT;
+      BEGIN TRANSACTION;
+      DELETE FROM Users;
+      INSERT INTO Users (Identifier, Username, Password, Salt, Iterations) VALUES ('$(uuidgen)', '${cfg.authentication.username}', '$HASH', '$SALT', 10000);
+      COMMIT;
       EOF
 
       # Ensure proper permissions
