@@ -49,6 +49,7 @@ let
       chown radarr:media "${cfg.stateDir}/config.xml"
       chmod 600 "${cfg.stateDir}/config.xml"
 
+      rm -f "${cfg.stateDir}/radarr.db"
       sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
       ${builtins.readFile ./init.sql}
       EOF
