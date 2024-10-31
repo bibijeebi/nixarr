@@ -3,35 +3,6 @@ with lib;
 let
   cfg = config.nixarr.radarr;
   nixarr = config.nixarr;
-
-  configXmlPath = "${cfg.stateDir}/config.xml";
-  configXmlText = ''
-    <?xml version="1.0" encoding="utf-8"?>
-    <Config>
-      <BindAddress>*</BindAddress>
-      <Port>${builtins.toString cfg.port}</Port>
-      <SslPort>9898</SslPort>
-      <EnableSsl>false</EnableSsl>
-      <LaunchBrowser>true</LaunchBrowser>
-      <ApiKey>${
-        builtins.substring 0 32
-        (builtins.hashString "sha256" config.networking.hostName)
-      }</ApiKey>
-      <AuthenticationMethod>${
-        if cfg.authentication.useFormLogin then "Forms" else "Basic"
-      }</AuthenticationMethod>
-      <AuthenticationRequired>${
-        if cfg.authentication.disabledForLocalAddresses then
-          "DisabledForLocalAddresses"
-        else
-          "Enabled"
-      }</AuthenticationRequired>
-      <Branch>master</Branch>
-      <LogLevel>${cfg.logLevel}</LogLevel>
-      <UrlBase>${cfg.urlBase}</UrlBase>
-      <InstanceName>Radarr</InstanceName>
-    </Config>
-  '';
 in {
 
   options.nixarr.radarr = {
@@ -150,10 +121,36 @@ in {
         fi
 
         # Write the config file if it doesn't exists
-        if [ ! -f "${configXmlPath}" ]; then
-          echo "${configXmlText}" > "${configXmlPath}"
-          chown radarr:media "${configXmlPath}"
-          chmod 600 "${configXmlPath}"
+        if [ ! -f "${cfg.stateDir}/config.xml" ]; then
+          cat <<'EOF' > "${cfg.stateDir}/config.xml"
+          <?xml version="1.0" encoding="utf-8"?>
+          <Config>
+            <BindAddress>*</BindAddress>
+            <Port>${builtins.toString cfg.port}</Port>
+            <SslPort>9898</SslPort>
+            <EnableSsl>false</EnableSsl>
+            <LaunchBrowser>true</LaunchBrowser>
+            <ApiKey>${
+              builtins.substring 0 32
+              (builtins.hashString "sha256" config.networking.hostName)
+            }</ApiKey>
+            <AuthenticationMethod>${
+              if cfg.authentication.useFormLogin then "Forms" else "Basic"
+            }</AuthenticationMethod>
+            <AuthenticationRequired>${
+              if cfg.authentication.disabledForLocalAddresses then
+                "DisabledForLocalAddresses"
+              else
+                "Enabled"
+            }</AuthenticationRequired>
+            <Branch>master</Branch>
+            <LogLevel>${cfg.logLevel}</LogLevel>
+            <UrlBase>${cfg.urlBase}</UrlBase>
+            <InstanceName>Radarr</InstanceName>
+          </Config>
+          EOF
+          chown radarr:media "${cfg.stateDir}/config.xml"
+          chmod 600 "${cfg.stateDir}/config.xml"
         fi
 
         # Create the database file if it doesn't exist
