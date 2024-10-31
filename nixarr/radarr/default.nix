@@ -46,13 +46,7 @@ let
 
   preStartScript = pkgs.writeShellApplication {
     name = "configure-radarr";
-    runtimeInputs = [
-      pkgs.sqlite
-      pkgs.jq
-      pkgs.openssl
-      pkgs.nodejs
-      pkgs.libuuid
-    ];
+    runtimeInputs = with pkgs; [ sqlite jq openssl nodejs libuuid ];
     text = ''
       function log() {
         echo "[Radarr Setup] $1" >&2
