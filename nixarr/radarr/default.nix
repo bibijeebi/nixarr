@@ -191,7 +191,7 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '1',
+            '$(${pkgs.util-linux}/bin/uuidgen)',
             '${cfg.authentication.username}',
             '$HASH',
             '$SALT',
