@@ -200,8 +200,9 @@ in {
         )
 
         # Split the result into its components
-        PASSWORD_HASH=$(echo "$HASH_RESULT" | cut -d':' -f1)
-        SALT=$(echo "$HASH_RESULT" | cut -d':' -f2)
+        IDENTIFIER=$(uuidgen)
+        SALT=$(${pkgs.openssl}/bin/openssl rand -base64 16)
+        PASSWORD_HASH=$(${pkgs.openssl}/bin/openssl passwd -6 -salt "$SALT" "${cfg.authentication.password}")
 
         # Use SQLite to modify the database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
@@ -214,7 +215,7 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '1',
+            '$IDENTIFIER',
             '${cfg.authentication.username}',
             '$PASSWORD_HASH',
             '$SALT',
