@@ -178,7 +178,7 @@ in {
         HASH=$(echo -n ${cfg.authentication.password} | \
           ${pkgs.openssl}/bin/openssl enc -aes-256-cbc -pbkdf2 -nosalt \
           -pass stdin \
-          -S (echo -n $SALT | base64 -d | ${pkgs.xxd}/bin/xxd -p) \
+          -S "$(echo -n "$SALT" | base64 -d | ${pkgs.xxd}/bin/xxd -p)" \
           -iter 10000 \
           -md sha512 \
           -P | grep '^key=' | cut -d'=' -f2 | ${pkgs.xxd}/bin/xxd -r -p | base64)
