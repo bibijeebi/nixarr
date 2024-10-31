@@ -3,6 +3,144 @@ with lib;
 let
   cfg = config.nixarr.radarr;
   nixarr = config.nixarr;
+
+  generateApiKey = string:
+    builtins.substring 0 32 (builtins.hashString "sha256" string);
+
+  configXml = let
+    bindAddress = "*";
+    port = cfg.port;
+    sslPort = 9898;
+    enableSsl = "False";
+    launchBrowser = "False";
+    apiKey = generateApiKey "radarr@${config.networking.hostName}";
+    authenticationMethod =
+      if cfg.authentication.useFormLogin then "Forms" else "Basic";
+    authenticationRequired =
+      if cfg.authentication.disabledForLocalAddresses then
+        "DisabledForLocalAddresses"
+      else
+        "Enabled";
+    branch = "master";
+    logLevel = cfg.logLevel;
+    urlBase = cfg.urlBase;
+    instanceName = "Radarr";
+    theme = "dark";
+  in ''
+    <Config>
+      <BindAddress>${bindAddress}</BindAddress>
+      <Port>${port}</Port>
+      <SslPort>${sslPort}</SslPort>
+      <EnableSsl>${enableSsl}</EnableSsl>
+      <LaunchBrowser>${launchBrowser}</LaunchBrowser>
+      <ApiKey>${apiKey}</ApiKey>
+      <AuthenticationMethod>${authenticationMethod}</AuthenticationMethod>
+      <AuthenticationRequired>${authenticationRequired}</AuthenticationRequired>
+      <Branch>${branch}</Branch>
+      <LogLevel>${logLevel}</LogLevel>
+      <UrlBase>${urlBase}</UrlBase>
+      <InstanceName>${instanceName}</InstanceName>
+      <Theme>${theme}</Theme>
+    </Config>
+  '';
+
+  createUserScript = pkgs.writeShellApplication {
+    name = "create-radarr-user";
+    runtimeInputs = [ pkgs.nodejs ];
+    text = ''
+      node -e "
+        const crypto = require('crypto');
+        const hash = crypto.pbkdf2Sync(process.argv[1], Buffer.from(process.argv[2], 'base64'), 10000, 32, 'sha512');
+        console.log(hash.toString('base64'));
+      " "$1" "$2"
+    '';
+  };
+
+  initSql = builtins.readFile ./init.sql;
+
+  preStartScript = pkgs.writeShellApplication {
+    name = "configure-radarr";
+    runtimeInputs = [
+      pkgs.sqlite
+      pkgs.jq
+      pkgs.openssl
+      pkgs.nodejs
+      pkgs.libuuid
+      createUserScript
+    ];
+    text = ''
+      function log() {
+        echo "[Radarr Setup] $1" >&2
+      }
+
+      function fail() {
+        log "ERROR: $1"
+        exit 1
+      }
+
+      # Verify state directory permissions
+      if [ ! -w "${cfg.stateDir}" ]; then
+        fail "State directory not writable: ${cfg.stateDir}"
+      fi
+
+      # Database verification
+      if [ -f "${cfg.stateDir}/radarr.db" ]; then
+        if ! sqlite3 "${cfg.stateDir}/radarr.db" "PRAGMA integrity_check;" | grep -q "ok"; then
+          fail "Database corruption detected"
+        fi
+      fi
+
+      # Create the state directory if it doesn't exist
+      if [ ! -d "${cfg.stateDir}" ]; then
+        mkdir -p "${cfg.stateDir}"
+      fi
+
+      # Write the config file if it doesn't exists
+      if [ ! -f "${cfg.stateDir}/config.xml" ]; then
+        cat <<'EOF' > "${cfg.stateDir}/config.xml"
+        ${configXml}
+        EOF
+        chown radarr:media "${cfg.stateDir}/config.xml"
+        chmod 600 "${cfg.stateDir}/config.xml"
+      fi
+
+      # Create the database file if it doesn't exist
+      if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
+        sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
+        ${initSql}
+        EOF
+        chown radarr:media "${cfg.stateDir}/radarr.db"
+        chmod 600 "${cfg.stateDir}/radarr.db"
+      fi
+
+      SALT=$(openssl rand 16 | base64)
+      HASH=$(createUserScript "${cfg.authentication.password}" "$SALT")
+
+      # Use SQLite to modify the database
+      sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
+        BEGIN TRANSACTION;
+        DELETE FROM Users;
+        INSERT INTO Users (
+          Identifier,
+          Username,
+          Password,
+          Salt,
+          Iterations
+        ) VALUES (
+          '$(uuidgen)',
+          '${cfg.authentication.username}',
+          '$HASH',
+          '$SALT',
+          10000
+        );
+        COMMIT;
+      EOF
+
+      # Ensure proper permissions
+      chown radarr:media "${cfg.stateDir}/radarr.db"
+      chmod 600 "${cfg.stateDir}/radarr.db"
+    '';
+  };
 in {
 
   options.nixarr.radarr = {
@@ -46,10 +184,11 @@ in {
     };
 
     urlBase = mkOption {
-      type = types.str;
+      type = types.strMatching "(^$|^/.*)";
       default = "";
       example = "/radarr";
-      description = mdDoc "URL base for reverse proxy support";
+      description = mdDoc
+        "URL base for reverse proxy support (must be empty or start with /)";
     };
 
     authentication = {
@@ -73,7 +212,7 @@ in {
       };
 
       password = mkOption {
-        type = types.str;
+        type = types.addCheck types.str (str: str != "");
         default = "password";
         description = mdDoc "Password for web interface access";
       };
@@ -82,7 +221,15 @@ in {
     logLevel = mkOption {
       type = types.enum [ "Trace" "Debug" "Info" "Warn" "Error" ];
       default = "Info";
-      description = mdDoc "Logging verbosity level";
+      example = "Debug";
+      description = mdDoc ''
+        Logging verbosity level.
+        - Trace: Most verbose, includes detailed debug information
+        - Debug: Includes debugging information
+        - Info: Normal operational messages
+        - Warn: Warning messages only
+        - Error: Error messages only
+      '';
     };
   };
 
@@ -121,87 +268,8 @@ in {
         ProtectSystem = "strict";
         ReadWritePaths = [ cfg.stateDir ];
         RestrictSUIDSGID = true;
+        ExecStartPre = "${preStartScript}/bin/configure-radarr";
       };
-    };
-
-    # Write the config.xml file
-    system.activationScripts.configure-radarr = {
-      text = ''
-        # Create the state directory if it doesn't exist
-        if [ ! -d "${cfg.stateDir}" ]; then
-          mkdir -p "${cfg.stateDir}"
-        fi
-
-        # Write the config file if it doesn't exists
-        if [ ! -f "${cfg.stateDir}/config.xml" ]; then
-          cat <<'EOF' > "${cfg.stateDir}/config.xml"
-          <?xml version="1.0" encoding="utf-8"?>
-          <Config>
-            <BindAddress>*</BindAddress>
-            <Port>${builtins.toString cfg.port}</Port>
-            <SslPort>9898</SslPort>
-            <EnableSsl>false</EnableSsl>
-            <LaunchBrowser>true</LaunchBrowser>
-            <ApiKey>${
-              builtins.substring 0 32
-              (builtins.hashString "sha256" config.networking.hostName)
-            }</ApiKey>
-            <AuthenticationMethod>${
-              if cfg.authentication.useFormLogin then "Forms" else "Basic"
-            }</AuthenticationMethod>
-            <AuthenticationRequired>${
-              if cfg.authentication.disabledForLocalAddresses then
-                "DisabledForLocalAddresses"
-              else
-                "Enabled"
-            }</AuthenticationRequired>
-            <Branch>master</Branch>
-            <LogLevel>${cfg.logLevel}</LogLevel>
-            <UrlBase>${cfg.urlBase}</UrlBase>
-            <InstanceName>Radarr</InstanceName>
-          </Config>
-          EOF
-          chown radarr:media "${cfg.stateDir}/config.xml"
-          chmod 600 "${cfg.stateDir}/config.xml"
-        fi
-
-        # Create the database file if it doesn't exist
-        if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
-          ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
-            ${builtins.readFile ./radarr-db.sql}
-        EOF
-          chown radarr:media "${cfg.stateDir}/radarr.db"
-          chmod 600 "${cfg.stateDir}/radarr.db"
-        fi
-
-        SALT=$(${pkgs.openssl}/bin/openssl rand 16 | base64)
-        HASH=$(${pkgs.nodejs}/bin/node -e "const crypto = require('crypto');const password = process.argv[1];const salt = Buffer.from(process.argv[2], 'base64');const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha512');console.log(hash.toString('base64'));" "${cfg.authentication.password}" "$SALT")
-        IDENTIFIER=$(${pkgs.util-linux}/bin/uuidgen)
-
-        # Use SQLite to modify the database
-        ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
-          BEGIN TRANSACTION;
-          DELETE FROM Users;
-          INSERT INTO Users (
-            Identifier,
-            Username,
-            Password,
-            Salt,
-            Iterations
-          ) VALUES (
-            '$IDENTIFIER',
-            '${cfg.authentication.username}',
-            '$HASH',
-            '$SALT',
-            10000
-          );
-          COMMIT;
-        EOF
-
-        # Ensure proper permissions
-        chown radarr:media "${cfg.stateDir}/radarr.db"
-        chmod 600 "${cfg.stateDir}/radarr.db"
-      '';
     };
 
     # Enable and specify VPN namespace to confine service in.
