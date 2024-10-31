@@ -189,10 +189,10 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '${IDENTIFIER}',
+            '$IDENTIFIER',
             '${cfg.authentication.username}',
-            '${HASH}',
-            '${SALT}',
+            '$HASH',
+            '$SALT',
             10000
           );
           COMMIT;
