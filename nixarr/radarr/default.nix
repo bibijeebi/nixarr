@@ -130,18 +130,20 @@ in {
         # Create the state directory if it doesn't exist
         if [ ! -d "${cfg.stateDir}" ]; then
           mkdir -p "${cfg.stateDir}"
+          chown radarr:media "${cfg.stateDir}"
+          chmod 750 "${cfg.stateDir}"
         fi
 
-        # Write the config file if it doesn't exists
+        # Write the config file if it doesn't exist
         if [ ! -f "${cfg.stateDir}/config.xml" ]; then
-          cat <<'EOF' > "${cfg.stateDir}/config.xml"
+          cat <<EOF > "${cfg.stateDir}/config.xml"
           <?xml version="1.0" encoding="utf-8"?>
           <Config>
             <BindAddress>*</BindAddress>
             <Port>${builtins.toString cfg.port}</Port>
             <SslPort>9898</SslPort>
             <EnableSsl>false</EnableSsl>
-            <LaunchBrowser>true</LaunchBrowser>
+            <LaunchBrowser>false</LaunchBrowser>
             <ApiKey>${
               builtins.substring 0 32
               (builtins.hashString "sha256" config.networking.hostName)
@@ -169,16 +171,16 @@ in {
         if [ ! -f "${cfg.stateDir}/radarr.db" ]; then
           ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<'EOF'
             ${builtins.readFile ./radarr-db.sql}
-        EOF
+          EOF
           chown radarr:media "${cfg.stateDir}/radarr.db"
           chmod 600 "${cfg.stateDir}/radarr.db"
         fi
 
-        SALT=$(${pkgs.openssl}/bin/openssl rand 16 | base64)
+        # Generate salt and hash password
+        SALT=$(${pkgs.openssl}/bin/openssl rand -base64 16)
         HASH=$(${pkgs.nodejs}/bin/node -e "const crypto = require('crypto');const password = process.argv[1];const salt = Buffer.from(process.argv[2], 'base64');const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha512');console.log(hash.toString('base64'));" "${cfg.authentication.password}" "$SALT")
-        IDENTIFIER=$(${pkgs.util-linux}/bin/uuidgen)
 
-        # Use SQLite to modify the database
+        # Update user in database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
           BEGIN TRANSACTION;
           DELETE FROM Users;
@@ -189,7 +191,7 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '$IDENTIFIER',
+            '1',
             '${cfg.authentication.username}',
             '$HASH',
             '$SALT',
@@ -197,10 +199,6 @@ in {
           );
           COMMIT;
         EOF
-
-        # Ensure proper permissions
-        chown radarr:media "${cfg.stateDir}/radarr.db"
-        chmod 600 "${cfg.stateDir}/radarr.db"
       '';
     };
 
