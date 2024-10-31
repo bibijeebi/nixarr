@@ -174,18 +174,9 @@ in {
           chmod 600 "${cfg.stateDir}/radarr.db"
         fi
 
-        # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${pkgs.python3}/bin/python3 -c '
-          import base64
-          import hashlib
-          import sys
-          import os
-          password = "${cfg.authentication.password}".encode('utf-8')
-          salt = base64.b64encode(os.urandom(16)).decode('utf-8')
-          iterations = 10000
-          dk = hashlib.pbkdf2_hmac('sha256', password, salt, iterations, 32)
-          print(f"{base64.b64encode(dk).decode('utf-8')}:{salt}")
-        ')
+        SALT=$(openssl rand 16 | base64)
+        HASH=$(echo -n ${cfg.authentication.password} | openssl enc -aes-256-cbc -pbkdf2 -nosalt -pass stdin -S $(echo -n $SALT | base64 -d | xxd -p) -iter 10000 -md sha1 -P | grep '^key=' | cut -d'=' -f2 | xxd -r -p | base64)
+        IDENTIFIER=$(uuidgen)
 
         # Use SQLite to modify the database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
@@ -198,10 +189,10 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '$(uuidgen)',
+            '${IDENTIFIER}',
             '${cfg.authentication.username}',
-            '$(echo "$HASH_RESULT" | cut -d':' -f1)',
-            '$(echo "$HASH_RESULT" | cut -d':' -f2)',
+            '${HASH}',
+            '${SALT}',
             10000
           );
           COMMIT;
