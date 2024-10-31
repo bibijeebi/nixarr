@@ -52,7 +52,6 @@ let
       pkgs.openssl
       pkgs.nodejs
       pkgs.libuuid
-      createUserScript
     ];
     text = ''
       function log() {
