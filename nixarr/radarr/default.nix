@@ -175,7 +175,7 @@ in {
         fi
 
         SALT=$(${pkgs.openssl}/bin/openssl rand 16 | base64)
-        HASH=$(node -e "const crypto = require('crypto');const password = process.argv[1];const salt = Buffer.from(process.argv[2], 'base64');const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha512');console.log(hash.toString('base64'));" "${cfg.authentication.password}" "$SALT")
+        HASH=$(${pkgs.nodejs}/bin/node -e "const crypto = require('crypto');const password = process.argv[1];const salt = Buffer.from(process.argv[2], 'base64');const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha512');console.log(hash.toString('base64'));" "${cfg.authentication.password}" "$SALT")
         IDENTIFIER=$(${pkgs.util-linux}/bin/uuidgen)
 
         # Use SQLite to modify the database
