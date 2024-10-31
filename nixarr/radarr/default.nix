@@ -175,34 +175,18 @@ in {
         fi
 
         # Generate a new salt and hash the password using Python's cryptography
-        HASH_RESULT=$(${pkgs.python3.withPackages (ps: [ ps.cryptography ])}/bin/python3 -c <<'EOF'
+        HASH_RESULT=$(${pkgs.python3}/bin/python3 -c <<EOF
           import base64
+          import hashlib
+          import sys
           import os
-          from cryptography.hazmat.primitives import hashes
-          from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-          salt = os.urandom(16)
-          salt_b64 = base64.b64encode(salt).decode('utf-8')
-
-          kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=10000,
-          )
-
           password = "${cfg.authentication.password}".encode('utf-8')
-          key = kdf.derive(password)
-          password_b64 = base64.b64encode(key).decode('utf-8')
-
-          print(f"{password_b64}:{salt_b64}")
+          salt = base64.b64encode(os.urandom(16)).decode('utf-8')
+          iterations = 10000
+          dk = hashlib.pbkdf2_hmac('sha256', password, salt, iterations, 32)
+          print(f"{base64.b64encode(dk).decode('utf-8')}:{salt}")
         EOF
         )
-
-        # Split the result into its components
-        IDENTIFIER=$(uuidgen)
-        SALT=$(${pkgs.openssl}/bin/openssl rand -base64 16)
-        PASSWORD_HASH=$(${pkgs.openssl}/bin/openssl passwd -6 -salt "$SALT" "${cfg.authentication.password}")
 
         # Use SQLite to modify the database
         ${pkgs.sqlite}/bin/sqlite3 "${cfg.stateDir}/radarr.db" <<EOF
@@ -215,10 +199,10 @@ in {
             Salt,
             Iterations
           ) VALUES (
-            '$IDENTIFIER',
+            '$(uuidgen)',
             '${cfg.authentication.username}',
-            '$PASSWORD_HASH',
-            '$SALT',
+            '$(echo "$HASH_RESULT" | cut -d':' -f1)',
+            '$(echo "$HASH_RESULT" | cut -d':' -f2)',
             10000
           );
           COMMIT;
